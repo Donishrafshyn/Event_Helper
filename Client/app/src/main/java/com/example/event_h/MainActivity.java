@@ -1,4 +1,4 @@
-package com.example.event_h;
+git spackage com.example.event_h;
 
 import android.os.Bundle;
 
