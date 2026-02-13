@@ -1,4 +1,5 @@
 import 'package:event/login.dart';
+import 'package:event/signup.dart';
 import 'package:flutter/material.dart';
 import 'package:event/home.dart';
 

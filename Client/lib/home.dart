@@ -1,3 +1,4 @@
+import 'package:event/signup.dart' hide UserRole;
 import 'package:flutter/material.dart';
 
 import 'login.dart';
@@ -157,7 +158,13 @@ class _EventHelperHomeState extends State<EventHelperHome> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) =>SignupPage(
+                      onSignup: (SignupData data) {  },
+                      onBackToHome: () {  },
+                      onSwitchToLogin: () {  },
+                    )));
+                  },
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white.withValues(alpha: 0.2),
                       foregroundColor: Colors.white,

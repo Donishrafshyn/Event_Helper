@@ -1,3 +1,4 @@
+import 'package:event/signup.dart';
 import 'package:flutter/material.dart';
 
 enum UserRole { user, provider, admin }
@@ -58,15 +59,29 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 24),
                   Center(
                     child: GestureDetector(
-                      onTap: widget.onSwitchToSignup,
+                      onTap: () {
+                        // Wrap the navigator in a function to fix the 'Future' error
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SignupPage(
+                              onSignup: (SignupData data) {
+                                // Handle signup data logic
+                              },
+                              onBackToHome: () => Navigator.pop(context),
+                              onSwitchToLogin: () => Navigator.pop(context),
+                            ),
+                          ),
+                        );
+                      },
                       child: RichText(
-                        text: TextSpan(
-                          style: const TextStyle(color: Color(0xFF4B5563), fontSize: 14),
+                        text: const TextSpan(
+                          style: TextStyle(color: Color(0xFF4B5563), fontSize: 14),
                           children: [
-                            const TextSpan(text: "Don't have an account? "),
+                            TextSpan(text: "Don't have an account? "),
                             TextSpan(
                               text: "Sign Up",
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Color(0xFF9333EA),
                                 fontWeight: FontWeight.bold,
                               ),
