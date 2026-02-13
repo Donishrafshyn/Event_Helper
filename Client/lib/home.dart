@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'login.dart';
+
 class EventHelperHome extends StatefulWidget {
   const EventHelperHome({super.key});
 
@@ -93,7 +95,15 @@ class _EventHelperHomeState extends State<EventHelperHome> {
                   ),
                 ],
               ),
-              const CircleAvatar(backgroundColor: Colors.white24, child: Icon(Icons.person_outline, color: Colors.white)),
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => LoginPage(onLogin: (String email, String password, UserRole role) {  }, onSwitchToSignup: () {  },)));
+                },
+                child: const CircleAvatar(
+                  backgroundColor: Colors.white24,
+                  child: Icon(Icons.person_outline, color: Colors.white),
+                ),
+              )
             ],
           ),
           const SizedBox(height: 25),
@@ -132,7 +142,9 @@ class _EventHelperHomeState extends State<EventHelperHome> {
             children: [
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => LoginPage(onLogin: (String email, String password, UserRole role) {  }, onSwitchToSignup: () {  },)));
+                  },
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       foregroundColor: const Color(0xFF9333EA),
