@@ -1,3 +1,4 @@
+import 'package:event/Userdashboard.dart';
 import 'package:event/login.dart';
 import 'package:event/resetpass.dart';
 import 'package:event/signup.dart';
@@ -18,7 +19,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home:ResetPasswordPage(email: '', onResetComplete: (String newPassword) {  },),
+      home:UserDashboard(user: {}, bookings: [], notifications: [], onHome: () {  }, onLogout: () {  },),
       debugShowCheckedModeBanner: false,
     );
   }
