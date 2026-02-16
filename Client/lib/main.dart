@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:event/home.dart';
 
 
+import 'Providerdashboard.dart';
 import 'home.dart';
 
 void main() {
@@ -19,7 +20,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home:UserDashboard(user: {}, bookings: [], notifications: [], onHome: () {  }, onLogout: () {  },),
+      home:ProviderDashboard(provider: {}, services: [], bookings: [], notifications: [], onHome: () {  }, onLogout: () {  }, onUpdateBookingStatus: (String id, String status) {  },),
       debugShowCheckedModeBanner: false,
     );
   }
