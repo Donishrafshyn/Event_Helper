@@ -1,4 +1,5 @@
 import 'package:event/signup.dart';
+import 'package:event/verifymail.dart';
 import 'package:flutter/material.dart';
 
 enum UserRole { user, provider, admin }
@@ -81,6 +82,39 @@ class _LoginPageState extends State<LoginPage> {
                             TextSpan(text: "Don't have an account? "),
                             TextSpan(
                               text: "Sign Up",
+                              style: TextStyle(
+                                color: Color(0xFF9333EA),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: GestureDetector(
+                      onTap: () {
+                        // Wrap the navigator in a function to fix the 'Future' error
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ForgotPasswordPage(
+                              onVerifyEmail: (String email) {
+                                // Handle email verification logic
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                      child: RichText(
+                        text: const TextSpan(
+                          style: TextStyle(color: Color(0xFF4B5563), fontSize: 14),
+                          children: [
+                            TextSpan(text: "Forgot your password? "),
+                            TextSpan(
+                              text: "Reset",
                               style: TextStyle(
                                 color: Color(0xFF9333EA),
                                 fontWeight: FontWeight.bold,
