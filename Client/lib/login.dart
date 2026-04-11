@@ -1,17 +1,25 @@
 import 'package:event/signup.dart';
 import 'package:event/verifymail.dart';
+import 'package:event/home.dart'; // Import EventHelperHome
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+// Import your dashboards
+import 'Admindashboard.dart';
+import 'Userdashboard.dart'; 
+import 'Providerdashboard.dart';
 
 enum UserRole { user, provider, admin }
 
 class LoginPage extends StatefulWidget {
-  final Function(String email, String password, UserRole role) onLogin;
-  final VoidCallback onSwitchToSignup;
+  final Function(String email, String password, UserRole role)? onLogin;
+  final VoidCallback? onSwitchToSignup;
 
   const LoginPage({
     super.key,
-    required this.onLogin,
-    required this.onSwitchToSignup,
+    this.onLogin,
+    this.onSwitchToSignup,
   });
 
   @override
@@ -22,12 +30,120 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   UserRole _selectedRole = UserRole.user;
+  bool _isLoading = false;
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleLogout(BuildContext context) async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      if (context.mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const EventHelperHome()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const EventHelperHome()),
+          (route) => false,
+        );
+      }
+    }
+  }
+
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter email and password")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .get();
+
+      if (userDoc.exists) {
+        String roleInDb = userDoc.get('role');
+        
+        if (roleInDb.toLowerCase() == _selectedRole.name.toLowerCase()) {
+          if (!mounted) return;
+          _navigateByRole(_selectedRole, userDoc.data() as Map<String, dynamic>);
+        } else {
+          await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Account Error: You are registered as a $roleInDb, but selected ${_selectedRole.name}")),
+          );
+        }
+      } else {
+        await FirebaseAuth.instance.signOut();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("User profile not found in database")),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      String message = e.message ?? "Login failed";
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _navigateByRole(UserRole role, Map<String, dynamic> userData) {
+    Widget nextScreen;
+    switch (role) {
+      case UserRole.admin:
+        nextScreen = AdminDashboard(
+          admin: userData,
+          onHome: () => Navigator.of(context).popUntil((route) => route.isFirst),
+          onLogout: () => _handleLogout(context),
+        );
+        break;
+      case UserRole.provider:
+        nextScreen = ProviderDashboard(
+          provider: userData,
+          onHome: () => Navigator.of(context).popUntil((route) => route.isFirst),
+          onLogout: () => _handleLogout(context),
+        );
+        break;
+      case UserRole.user:
+        nextScreen = UserDashboard(
+          user: userData,
+          onHome: () => Navigator.of(context).popUntil((route) => route.isFirst),
+          onLogout: () => _handleLogout(context),
+        );
+        break;
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => nextScreen),
+    );
   }
 
   @override
@@ -43,8 +159,7 @@ class _LoginPageState extends State<LoginPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Login As",
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                  const Text("Login As", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
                   const SizedBox(height: 12),
                   _buildRoleSelector(),
                   const SizedBox(height: 24),
@@ -54,77 +169,9 @@ class _LoginPageState extends State<LoginPage> {
                   _buildLabel("Password"),
                   _buildTextField(_passwordController, "Enter your password", Icons.lock_outline, isPassword: true),
                   const SizedBox(height: 32),
-                  _buildSubmitButton(),
-
-                  // New: "Don't have an account?" toggle
+                  _isLoading ? const Center(child: CircularProgressIndicator()) : _buildSubmitButton(),
                   const SizedBox(height: 24),
-                  Center(
-                    child: GestureDetector(
-                      onTap: () {
-                        // Wrap the navigator in a function to fix the 'Future' error
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => SignupPage(
-                              onSignup: (SignupData data) {
-                                // Handle signup data logic
-                              },
-                              onBackToHome: () => Navigator.pop(context),
-                              onSwitchToLogin: () => Navigator.pop(context),
-                            ),
-                          ),
-                        );
-                      },
-                      child: RichText(
-                        text: const TextSpan(
-                          style: TextStyle(color: Color(0xFF4B5563), fontSize: 14),
-                          children: [
-                            TextSpan(text: "Don't have an account? "),
-                            TextSpan(
-                              text: "Sign Up",
-                              style: TextStyle(
-                                color: Color(0xFF9333EA),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Center(
-                    child: GestureDetector(
-                      onTap: () {
-                        // Wrap the navigator in a function to fix the 'Future' error
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ForgotPasswordPage(
-                              onVerifyEmail: (String email) {
-                                // Handle email verification logic
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                      child: RichText(
-                        text: const TextSpan(
-                          style: TextStyle(color: Color(0xFF4B5563), fontSize: 14),
-                          children: [
-                            TextSpan(text: "Forgot your password? "),
-                            TextSpan(
-                              text: "Reset",
-                              style: TextStyle(
-                                color: Color(0xFF9333EA),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildFooterLinks(),
                 ],
               ),
             ),
@@ -219,7 +266,7 @@ class _LoginPageState extends State<LoginPage> {
           borderRadius: BorderRadius.circular(15),
         ),
         child: ElevatedButton(
-          onPressed: () => widget.onLogin(_emailController.text, _passwordController.text, _selectedRole),
+          onPressed: _handleLogin,
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.transparent,
             shadowColor: Colors.transparent,
@@ -229,6 +276,38 @@ class _LoginPageState extends State<LoginPage> {
           child: const Text("Sign In", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ),
       ),
+    );
+  }
+
+  Widget _buildFooterLinks() {
+    return Column(
+      children: [
+        Center(
+          child: GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => SignupPage(
+              onSignup: (data){}, 
+              onBackToHome: () => Navigator.pop(context), 
+              onSwitchToLogin: () => Navigator.pop(context)
+            ))),
+            child: RichText(
+              text: const TextSpan(
+                style: TextStyle(color: Color(0xFF4B5563), fontSize: 14),
+                children: [
+                  TextSpan(text: "Don't have an account? "),
+                  TextSpan(text: "Sign Up", style: TextStyle(color: Color(0xFF9333EA), fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Center(
+          child: GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ForgotPasswordPage(onVerifyEmail: (e){}))),
+            child: const Text("Forgot your password? Reset", style: TextStyle(color: Color(0xFF9333EA), fontWeight: FontWeight.bold, fontSize: 14)),
+          ),
+        ),
+      ],
     );
   }
 }
