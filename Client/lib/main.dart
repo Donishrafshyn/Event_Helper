@@ -1,20 +1,19 @@
-import 'package:event/Servicedetail.dart';
 import 'package:event/Userdashboard.dart';
-import 'package:event/bookingform.dart';
-import 'package:event/login.dart';
-import 'package:event/resetpass.dart';
-import 'package:event/servicelist.dart';
-import 'package:event/signup.dart';
-import 'package:event/verifymail.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:event/home.dart';
 
+void main() async {
+  // 1. Ensure Flutter is initialized
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 2. Initialize Firebase
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint("Firebase initialization error: $e");
+  }
 
-import 'Admindashboard.dart';
-import 'Providerdashboard.dart';
-import 'home.dart';
-
-void main() {
   runApp(const MyApp());
 }
 
@@ -24,7 +23,12 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home:ServiceList(services: [], category: '', onBack: () {  }, onSelectService: (String serviceId) {  },),
+      title: 'Event Helper',
+      theme: ThemeData(
+        primarySwatch: Colors.purple,
+        useMaterial3: true,
+      ),
+      home: const EventHelperHome(),
       debugShowCheckedModeBanner: false,
     );
   }

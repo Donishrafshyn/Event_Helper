@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'home.dart';
 
 class UserDashboard extends StatefulWidget {
   final Map<String, dynamic> user;
-  final List<Map<String, dynamic>> bookings;
-  final List<Map<String, dynamic>> notifications;
   final VoidCallback onHome;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
 
   const UserDashboard({
     super.key,
     required this.user,
-    required this.bookings,
-    required this.notifications,
     required this.onHome,
     required this.onLogout,
   });
@@ -23,32 +20,66 @@ class UserDashboard extends StatefulWidget {
 }
 
 class _UserDashboardState extends State<UserDashboard> {
-  int _activeTab = 0; // 0: Bookings, 1: Alerts, 2: Profile
+  int _activeTab = 0;
   bool _isEditing = false;
+  bool _isSaving = false;
+  bool _isLoggingOut = false;
 
-  // Controllers for Profile Editing
   late TextEditingController _nameController;
-  late TextEditingController _emailController;
   late TextEditingController _phoneController;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.user['name']);
-    _emailController = TextEditingController(text: widget.user['email']);
     _phoneController = TextEditingController(text: widget.user['phone']);
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _emailController.dispose();
     _phoneController.dispose();
     super.dispose();
   }
 
+  Future<void> _updateProfile() async {
+    setState(() => _isSaving = true);
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.user['uid'])
+          .update({
+        'name': _nameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+      });
+      setState(() {
+        _isEditing = false;
+        _isSaving = false;
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile updated!")));
+    } catch (e) {
+      setState(() => _isSaving = false);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoggingOut) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text("Logging out...", style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: Column(
@@ -70,13 +101,11 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 
-  // --- Header Section ---
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.only(top: 60, left: 20, right: 20, bottom: 20),
       decoration: const BoxDecoration(
         gradient: LinearGradient(colors: [Color(0xFF9333EA), Color(0xFFDB2777)]),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -85,14 +114,12 @@ class _UserDashboardState extends State<UserDashboard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text("Welcome back", style: TextStyle(color: Colors.white70, fontSize: 12)),
-              Text(widget.user['name'] ?? "User",
+              Text(_nameController.text,
                   style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
             ],
           ),
           IconButton(
-            onPressed:(){
-              Navigator.push(context, MaterialPageRoute(builder: (context) => EventHelperHome()));
-            },
+            onPressed: widget.onHome,
             icon: const Icon(Icons.home_outlined, color: Colors.white),
             style: IconButton.styleFrom(backgroundColor: Colors.white24),
           ),
@@ -101,82 +128,76 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 
-  // --- Tab 1: Bookings ---
   Widget _buildBookingsTab() {
-    if (widget.bookings.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[300]),
-            const SizedBox(height: 16),
-            const Text("No bookings yet", style: TextStyle(color: Colors.grey)),
-            TextButton(onPressed: widget.onHome, child: const Text("Browse Services")),
-          ],
-        ),
-      );
-    }
+    return StreamBuilder<QuerySnapshot>(
+      // Removed orderBy to fix the "Composite Index" error immediately
+      stream: FirebaseFirestore.instance
+          .collection('bookings')
+          .where('userId', isEqualTo: widget.user['uid'])
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(child: Text("Error loading bookings: ${snapshot.error}"));
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[300]),
+                const SizedBox(height: 16),
+                const Text("No bookings yet", style: TextStyle(color: Colors.grey)),
+                const SizedBox(height: 8),
+                TextButton(onPressed: widget.onHome, child: const Text("Explore Services")),
+              ],
+            ),
+          );
+        }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: widget.bookings.length,
-      itemBuilder: (context, index) {
-        final booking = widget.bookings[index];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+        return ListView.builder(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          itemCount: snapshot.data!.docs.length,
+          itemBuilder: (context, index) {
+            var booking = snapshot.data!.docs[index].data() as Map<String, dynamic>;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(booking['eventName'] ?? "Event", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  _buildStatusBadge(booking['status'] ?? "pending"),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(booking['eventName'] ?? "Event", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      _buildStatusBadge(booking['status'] ?? "pending"),
+                    ],
+                  ),
+                  const Divider(height: 24),
+                  _buildDetailRow("Type", booking['eventType'] ?? "N/A"),
+                  _buildDetailRow("Date", booking['eventDate'] ?? "N/A"),
+                  _buildDetailRow("Location", booking['eventLocation'] ?? "N/A"),
                 ],
               ),
-              const Divider(height: 24),
-              _buildDetailRow("Service", booking['service']?['name'] ?? "N/A"),
-              _buildDetailRow("Date", booking['eventDate'] ?? "N/A"),
-              _buildDetailRow("Location", booking['eventLocation'] ?? "N/A"),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
-  // --- Tab 2: Notifications ---
   Widget _buildNotificationsTab() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: widget.notifications.length,
-      itemBuilder: (context, index) {
-        final note = widget.notifications[index];
-        bool isUnread = !(note['read'] ?? true);
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(15),
-            border: isUnread ? const Border(left: BorderSide(color: Color(0xFF9333EA), width: 4)) : null,
-          ),
-          child: ListTile(
-            title: Text(note['title'] ?? "", style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(note['message'] ?? ""),
-            trailing: isUnread ? const CircleAvatar(radius: 4, backgroundColor: Color(0xFF9333EA)) : null,
-          ),
-        );
-      },
-    );
+    return const Center(child: Text("Notifications coming soon", style: TextStyle(color: Colors.grey)));
   }
 
-  // --- Tab 3: Profile with Edit Mode ---
   Widget _buildProfileTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -187,7 +208,6 @@ class _UserDashboardState extends State<UserDashboard> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10)],
             ),
             child: Column(
               children: [
@@ -201,22 +221,22 @@ class _UserDashboardState extends State<UserDashboard> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
                 _buildEditableRow("Full Name", _nameController, Icons.person_outline),
-                _buildEditableRow("Email", _emailController, Icons.mail_outline),
+                _buildInfoRow("Email", widget.user['email']),
                 _buildEditableRow("Phone", _phoneController, Icons.phone_outlined),
                 _buildInfoRow("Account Type", widget.user['role'], isLast: true),
               ],
             ),
           ),
           const SizedBox(height: 24),
-          _isEditing ? _buildSaveButton() : _buildLogoutButton(),
+          _isEditing 
+            ? (_isSaving ? const CircularProgressIndicator() : _buildSaveButton()) 
+            : _buildLogoutButton(),
         ],
       ),
     );
   }
 
-  // --- Helper Methods ---
   Widget _buildEditableRow(String label, TextEditingController controller, IconData icon) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -227,19 +247,17 @@ class _UserDashboardState extends State<UserDashboard> {
           Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
           _isEditing
               ? TextField(
-            controller: controller,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-            decoration: InputDecoration(
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-              border: InputBorder.none,
-              prefixIcon: Icon(icon, size: 18, color: const Color(0xFF9333EA)),
-            ),
-          )
+                  controller: controller,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    prefixIcon: Icon(icon, size: 18, color: const Color(0xFF9333EA)),
+                  ),
+                )
               : Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(controller.text, style: const TextStyle(fontWeight: FontWeight.bold)),
-          ),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(controller.text, style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
         ],
       ),
     );
@@ -248,24 +266,14 @@ class _UserDashboardState extends State<UserDashboard> {
   Widget _buildSaveButton() {
     return SizedBox(
       width: double.infinity,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF9333EA), Color(0xFFDB2777)]),
-          borderRadius: BorderRadius.circular(15),
+      child: ElevatedButton(
+        onPressed: _updateProfile,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF9333EA),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
-        child: ElevatedButton(
-          onPressed: () {
-            // Add API call here to persist data
-            setState(() => _isEditing = false);
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile saved!")));
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.transparent,
-            shadowColor: Colors.transparent,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-          ),
-          child: const Text("Save Changes", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        ),
+        child: const Text("Save Changes", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -274,13 +282,15 @@ class _UserDashboardState extends State<UserDashboard> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: () {
-          // This removes ALL previous screens and opens the Home page
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (context) => const EventHelperHome()),
-                (route) => false, // This condition 'false' means delete all previous routes
-          );
+        onPressed: () async {
+          setState(() => _isLoggingOut = true);
+          await FirebaseAuth.instance.signOut();
+          if (mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const EventHelperHome()),
+              (route) => false,
+            );
+          }
         },
         icon: const Icon(Icons.logout, color: Colors.white),
         label: const Text("Logout", style: TextStyle(color: Colors.white)),
@@ -299,7 +309,7 @@ class _UserDashboardState extends State<UserDashboard> {
     if (status == 'rejected') color = Colors.red;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
       child: Text(status.toUpperCase(), style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
     );
   }
