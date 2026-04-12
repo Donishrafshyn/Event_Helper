@@ -14,6 +14,7 @@ class SignupData {
   String? businessName;
   String? description;
   String? category;
+  String? price; // Added Price
   SignupData();
 }
 
@@ -76,6 +77,7 @@ class _SignupPageState extends State<SignupPage> {
         userProfile['businessName'] = _formData.businessName?.trim();
         userProfile['category'] = _formData.category;
         userProfile['description'] = _formData.description?.trim();
+        userProfile['price'] = _formData.price?.trim(); // Save Price
         userProfile['isApproved'] = false;
       }
 
@@ -92,7 +94,6 @@ class _SignupPageState extends State<SignupPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Account created! Please login.")));
       
-      // Fix: Force navigation to Login screen after success
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const LoginPage()),
         (route) => false,
@@ -141,6 +142,9 @@ class _SignupPageState extends State<SignupPage> {
                       _buildLabel("Service Category"),
                       _buildDropdownField(),
                       const SizedBox(height: 20),
+                      _buildLabel("Starting Price"), // New Price Field
+                      _buildTextField(hint: "e.g. 5000", icon: Icons.currency_rupee, onSaved: (val) => _formData.price = val),
+                      const SizedBox(height: 20),
                       _buildLabel("Business Description"),
                       _buildTextField(hint: "Describe your services...", icon: Icons.description_outlined, maxLines: 3, onSaved: (val) => _formData.description = val),
                     ],
@@ -167,7 +171,6 @@ class _SignupPageState extends State<SignupPage> {
       child: Row(
         children: [
           IconButton(onPressed:() {
-            // Fix: Fallback navigation
             if (Navigator.canPop(context)) {
               Navigator.pop(context);
             } else {
@@ -261,7 +264,6 @@ class _SignupPageState extends State<SignupPage> {
     return Center(
       child: TextButton(
         onPressed: () {
-          // Fix: Force navigation to Login
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const LoginPage()),
             (route) => false,
