@@ -119,7 +119,12 @@ class _UserDashboardState extends State<UserDashboard> {
             ],
           ),
           IconButton(
-            onPressed: widget.onHome,
+            onPressed: () {
+              // Fix: Navigate to Home without logging out
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const EventHelperHome()),
+              );
+            },
             icon: const Icon(Icons.home_outlined, color: Colors.white),
             style: IconButton.styleFrom(backgroundColor: Colors.white24),
           ),
@@ -130,7 +135,6 @@ class _UserDashboardState extends State<UserDashboard> {
 
   Widget _buildBookingsTab() {
     return StreamBuilder<QuerySnapshot>(
-      // Removed orderBy to fix the "Composite Index" error immediately
       stream: FirebaseFirestore.instance
           .collection('bookings')
           .where('userId', isEqualTo: widget.user['uid'])
@@ -152,7 +156,7 @@ class _UserDashboardState extends State<UserDashboard> {
                 const SizedBox(height: 16),
                 const Text("No bookings yet", style: TextStyle(color: Colors.grey)),
                 const SizedBox(height: 8),
-                TextButton(onPressed: widget.onHome, child: const Text("Explore Services")),
+                TextButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const EventHelperHome())), child: const Text("Explore Services")),
               ],
             ),
           );
