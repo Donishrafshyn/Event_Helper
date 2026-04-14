@@ -8,6 +8,7 @@ import 'Userdashboard.dart';
 import 'Providerdashboard.dart';
 import 'servicelist.dart';
 import 'Servicedetail.dart';
+import 'bookingform.dart'; // Import BookingForm
 
 class EventHelperHome extends StatefulWidget {
   const EventHelperHome({super.key});
@@ -45,10 +46,8 @@ class _EventHelperHomeState extends State<EventHelperHome> {
               _showServiceDetail(provider, false, 'user');
               return;
             }
-
             DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
             String role = userDoc.exists ? (userDoc.get('role') ?? 'user') : 'user';
-
             _showServiceDetail(provider, true, role);
           },
         ),
@@ -68,22 +67,60 @@ class _EventHelperHomeState extends State<EventHelperHome> {
           isAuthenticated: isAuth && canBook,
           onBack: () => Navigator.pop(context),
           onBookNow: (String serviceId) {
-            if (!canBook) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Booking is only available for customers.")));
-              return;
-            }
+            // Fix: Navigate to BookingForm
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => BookingForm(
+                  service: provider,
+                  onBack: () => Navigator.pop(context),
+                  onSubmit: (BookingFormData data) async {
+                    await _handleBookingSubmission(data, provider);
+                  },
+                ),
+              ),
+            );
           },
           onLogin: () {
             if (canBook) {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const LoginPage()));
             } else {
-              // Removed 'const' because of string interpolation with '$role'
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("You are logged in as a $role.")));
             }
           },
         ),
       ),
     );
+  }
+
+  Future<void> _handleBookingSubmission(BookingFormData data, Map<String, dynamic> provider) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      // Create booking in Firestore
+      await FirebaseFirestore.instance.collection('bookings').add({
+        'userId': user.uid,
+        'providerId': provider['uid'] ?? provider['id'],
+        'serviceName': provider['businessName'] ?? provider['name'],
+        'eventName': data.eventName,
+        'eventType': data.eventType,
+        'eventDate': data.eventDate,
+        'eventLocation': data.eventLocation,
+        'guestCount': data.guestCount,
+        'message': data.message,
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Booking Request Sent!"), backgroundColor: Colors.green));
+        // Return to home or dashboard
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Booking Error: $e"), backgroundColor: Colors.red));
+    }
   }
 
   Future<void> _navigateToDashboard() async {
@@ -229,13 +266,7 @@ class _EventHelperHomeState extends State<EventHelperHome> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => SignupPage(
-                        onSignup: (data) {}, 
-                        onBackToHome: () => Navigator.pop(context), 
-                        onSwitchToLogin: () => Navigator.pop(context)
-                      )));
-                    },
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => SignupPage(onSignup: (data){}, onBackToHome: () => Navigator.pop(context), onSwitchToLogin: () => Navigator.pop(context)))),
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.white24, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                     child: const Text("Sign Up", style: TextStyle(fontWeight: FontWeight.bold)),
                   ),

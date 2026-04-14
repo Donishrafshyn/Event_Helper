@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 
 // Data model matching your React interface
@@ -8,6 +9,7 @@ class BookingFormData {
   String eventLocation = '';
   String eventType = '';
   int guestCount = 50;
+  String customerPhone = ''; // Added field
   String message = '';
 
   BookingFormData({required this.serviceId});
@@ -33,7 +35,6 @@ class _BookingFormState extends State<BookingForm> {
   final _formKey = GlobalKey<FormState>();
   late BookingFormData _formData;
 
-  // Event types matching your React list
   final List<String> _eventTypes = [
     'Wedding', 'Birthday Party', 'Corporate Event', 'Anniversary',
     'Engagement', 'Baby Shower', 'Graduation', 'Conference', 'Other'
@@ -49,7 +50,7 @@ class _BookingFormState extends State<BookingForm> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: AppBar(
+      appBar: AppBar( // FIXED typo: changed appApp to appBar
         backgroundColor: Colors.white,
         elevation: 0.5,
         leading: IconButton(
@@ -63,11 +64,9 @@ class _BookingFormState extends State<BookingForm> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // 1. Service Info Card with Null Safety Fix
             _buildServiceInfoCard(),
             const SizedBox(height: 24),
 
-            // 2. Booking Form
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -89,6 +88,15 @@ class _BookingFormState extends State<BookingForm> {
 
                     _buildLabel("Event Type"),
                     _buildDropdown(),
+                    const SizedBox(height: 20),
+
+                    _buildLabel("Contact Number"), // Added field UI
+                    _buildTextField(
+                      hint: "Your mobile number",
+                      icon: Icons.phone_android_outlined,
+                      isNumber: true,
+                      onSaved: (val) => _formData.customerPhone = val ?? '',
+                    ),
                     const SizedBox(height: 20),
 
                     _buildLabel("Event Date"),
@@ -140,42 +148,36 @@ class _BookingFormState extends State<BookingForm> {
     );
   }
 
-  // FIXED: Added null-safety check for images list to prevent NoSuchMethodError
   Widget _buildServiceInfoCard() {
-    final List? images = widget.service['images'];
-    final String imageUrl = (images != null && images.isNotEmpty)
-        ? images[0]
-        : 'https://via.placeholder.com/150'; // Fallback image
+    String? path = widget.service['profileImage'] ?? widget.service['images']?[0];
+    
+    Widget imageWidget;
+    if (path == null || path.isEmpty) {
+      imageWidget = Container(
+        width: 80, height: 80, color: Colors.grey[200],
+        child: const Icon(Icons.business, color: Colors.grey),
+      );
+    } else {
+      bool isLocal = path.startsWith('/') || path.contains(':\\');
+      ImageProvider imageProvider = isLocal ? FileImage(File(path)) : NetworkImage(path) as ImageProvider;
+      imageWidget = Image(image: imageProvider, width: 80, height: 80, fit: BoxFit.cover);
+    }
 
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.network(
-              imageUrl,
-              width: 80, height: 80, fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                width: 80, height: 80, color: Colors.grey[200],
-                child: const Icon(Icons.image_not_supported, color: Colors.grey),
-              ),
-            ),
-          ),
+          ClipRRect(borderRadius: BorderRadius.circular(10), child: imageWidget),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.service['name'] ?? "No Name",
+                Text(widget.service['businessName'] ?? widget.service['name'] ?? "No Name",
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 4),
-                Text(widget.service['description'] ?? "No description available.",
-                    maxLines: 2, overflow: TextOverflow.ellipsis,
+                Text(widget.service['category'] ?? "Service",
                     style: const TextStyle(color: Colors.grey, fontSize: 13)),
               ],
             ),
