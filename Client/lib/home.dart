@@ -98,11 +98,18 @@ class _EventHelperHomeState extends State<EventHelperHome> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
+      // Fetch user name for the booking record
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final userName = userDoc.exists ? (userDoc.get('name') ?? 'Guest User') : 'Guest User';
+
       // Create booking in Firestore
       await FirebaseFirestore.instance.collection('bookings').add({
         'userId': user.uid,
+        'userName': userName,
+        'customerPhone': data.customerPhone,
         'providerId': provider['uid'] ?? provider['id'],
         'serviceName': provider['businessName'] ?? provider['name'],
+        'price': provider['price'] ?? '0',
         'eventName': data.eventName,
         'eventType': data.eventType,
         'eventDate': data.eventDate,

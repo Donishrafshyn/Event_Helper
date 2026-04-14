@@ -104,6 +104,11 @@ class _ProviderDashboardState extends State<ProviderDashboard> {
           ],
           if (status == 'confirmed') 
             ElevatedButton(onPressed: () { Navigator.pop(context); _updateBookingStatus(id, 'completed'); }, style: ElevatedButton.styleFrom(backgroundColor: Colors.blue), child: const Text("Mark Completed", style: TextStyle(color: Colors.white))),
+          if (status == 'cancelled')
+            const Padding(
+              padding: EdgeInsets.only(right: 16.0, bottom: 8.0),
+              child: Text("CANCELLED BY USER", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+            ),
         ],
       ),
     );
@@ -223,12 +228,22 @@ class _ProviderDashboardState extends State<ProviderDashboard> {
       stream: FirebaseFirestore.instance.collection('bookings').where('providerId', isEqualTo: widget.provider['uid']).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-        if (snapshot.data!.docs.isEmpty) return const Center(child: Text("No booking requests yet."));
+        
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) return const Center(child: Text("No booking requests yet."));
+
+        // Sort by eventDate descending (newest first)
+        final sortedBookings = docs.toList()..sort((a, b) {
+          String dateA = (a.data() as Map<String, dynamic>)['eventDate'] ?? '';
+          String dateB = (b.data() as Map<String, dynamic>)['eventDate'] ?? '';
+          return dateB.compareTo(dateA);
+        });
+
         return ListView.builder(
-          padding: const EdgeInsets.all(16), itemCount: snapshot.data!.docs.length,
+          padding: const EdgeInsets.all(16), itemCount: sortedBookings.length,
           itemBuilder: (context, index) {
-            var booking = snapshot.data!.docs[index].data() as Map<String, dynamic>;
-            var id = snapshot.data!.docs[index].id;
+            var booking = sortedBookings[index].data() as Map<String, dynamic>;
+            var id = sortedBookings[index].id;
             return GestureDetector(
               onTap: () => _showBookingDetails(id, booking),
               child: Container(
@@ -254,10 +269,19 @@ class _ProviderDashboardState extends State<ProviderDashboard> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
         if (snapshot.data!.docs.isEmpty) return const Center(child: Text("No feedback yet."));
+        
+        final reviews = snapshot.data!.docs.toList()..sort((a, b) {
+          Timestamp? t1 = (a.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          Timestamp? t2 = (b.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          if (t1 == null) return -1;
+          if (t2 == null) return 1;
+          return t2.compareTo(t1);
+        });
+
         return ListView.builder(
-          padding: const EdgeInsets.all(16), itemCount: snapshot.data!.docs.length,
+          padding: const EdgeInsets.all(16), itemCount: reviews.length,
           itemBuilder: (context, index) {
-            var review = snapshot.data!.docs[index].data() as Map<String, dynamic>;
+            var review = reviews[index].data() as Map<String, dynamic>;
             return Card(
               margin: const EdgeInsets.only(bottom: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
               child: ListTile(
@@ -281,12 +305,53 @@ class _ProviderDashboardState extends State<ProviderDashboard> {
         const SizedBox(height: 16),
         _buildApprovalAlert(),
         const Divider(height: 32),
+        _alertSectionHeader("System Notifications", Icons.notifications_active_outlined, Colors.purple),
+        _buildSystemAlerts(),
+        const SizedBox(height: 20),
         _alertSectionHeader("New Event Requests", Icons.mail_outline, Colors.blue),
         _buildBookingAlerts(),
         const SizedBox(height: 20),
         _alertSectionHeader("Recent Customer Feedback", Icons.star_outline, Colors.orange),
         _buildReviewAlerts(),
       ],
+    );
+  }
+
+  Widget _buildSystemAlerts() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('bookings')
+          .where('providerId', isEqualTo: widget.provider['uid'])
+          .where('status', isEqualTo: 'cancelled')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Text("No important alerts.", style: TextStyle(color: Colors.grey, fontSize: 12));
+        
+        final cancelledBookings = snapshot.data!.docs.toList()..sort((a, b) {
+          Timestamp? t1 = (a.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          Timestamp? t2 = (b.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          if (t1 == null) return 1;
+          if (t2 == null) return -1;
+          return t2.compareTo(t1);
+        });
+
+        return Column(
+          children: cancelledBookings.map((doc) {
+            var b = doc.data() as Map<String, dynamic>;
+            return Card(
+              elevation: 0,
+              color: Colors.red[50],
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.cancel, color: Colors.red),
+                title: Text("Booking Cancelled: ${b['eventName']}"),
+                subtitle: Text("The customer '${b['userName']}' has cancelled this request."),
+                onTap: () => _showBookingDetails(doc.id, b),
+              ),
+            );
+          }).toList(),
+        );
+      },
     );
   }
 
@@ -312,13 +377,46 @@ class _ProviderDashboardState extends State<ProviderDashboard> {
 
   Widget _buildBookingAlerts() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('bookings').where('providerId', isEqualTo: widget.provider['uid']).where('status', isEqualTo: 'pending').snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('bookings')
+          .where('providerId', isEqualTo: widget.provider['uid'])
+          .where('status', isEqualTo: 'pending')
+          .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Text("No new requests.", style: TextStyle(color: Colors.grey, fontSize: 12));
-        return Column(children: snapshot.data!.docs.map((doc) {
-          var b = doc.data() as Map<String, dynamic>;
-          return Card(elevation: 0, color: Colors.blue[50], child: ListTile(onTap: () => _showBookingDetails(doc.id, b), title: Text("New Request: ${b['eventName']}"), subtitle: Text("Type: ${b['eventType']}")));
-        }).toList());
+        if (snapshot.hasError) return Text("Error: ${snapshot.error}");
+        if (!snapshot.hasData) return const LinearProgressIndicator();
+        
+        final pendingRequests = snapshot.data!.docs;
+
+        if (pendingRequests.isEmpty) {
+          return const Text("No new requests.", style: TextStyle(color: Colors.grey, fontSize: 12));
+        }
+
+        // Sort in memory: Newest first
+        final sortedRequests = pendingRequests.toList()..sort((a, b) {
+          Timestamp? t1 = (a.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          Timestamp? t2 = (b.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          if (t1 == null) return 1;
+          if (t2 == null) return -1;
+          return t2.compareTo(t1);
+        });
+
+        return Column(
+          children: sortedRequests.map((doc) {
+            var b = doc.data() as Map<String, dynamic>;
+            return Card(
+              elevation: 0, 
+              color: Colors.blue[50], 
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                onTap: () => _showBookingDetails(doc.id, b), 
+                title: Text("New Request: ${b['eventName']}"), 
+                subtitle: Text("Type: ${b['eventType']} • Customer: ${b['userName']}"),
+                trailing: const Icon(Icons.fiber_new, color: Colors.blue),
+              )
+            );
+          }).toList(),
+        );
       },
     );
   }
@@ -395,7 +493,7 @@ class _ProviderDashboardState extends State<ProviderDashboard> {
   Widget _buildLogoutButton() => SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: () async { setState(() => _isLoggingOut = true); await FirebaseAuth.instance.signOut(); Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const EventHelperHome()), (route) => false); }, icon: const Icon(Icons.logout, color: Colors.white), label: const Text("Logout", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(backgroundColor: Colors.red, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)))));
 
   Widget _buildStatusBadge(String status) {
-    Color color = status == 'confirmed' ? Colors.green : (status == 'rejected' ? Colors.red : (status == 'completed' ? Colors.blue : Colors.orange));
+    Color color = status == 'confirmed' ? Colors.green : (status == 'rejected' || status == 'cancelled' ? Colors.red : (status == 'completed' ? Colors.blue : Colors.orange));
     return Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20)), child: Text(status.toUpperCase(), style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)));
   }
 

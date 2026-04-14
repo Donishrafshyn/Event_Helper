@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Data model matching your React interface
 class BookingFormData {
@@ -177,13 +178,41 @@ class _BookingFormState extends State<BookingForm> {
                 Text(widget.service['businessName'] ?? widget.service['name'] ?? "No Name",
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 4),
-                Text(widget.service['category'] ?? "Service",
-                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                Row(
+                  children: [
+                    const Icon(Icons.star, color: Colors.orange, size: 14),
+                    _buildRatingText(widget.service['uid'] ?? widget.service['id'] ?? ''),
+                    const SizedBox(width: 8),
+                    Text(widget.service['category'] ?? "Service",
+                        style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                  ],
+                ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildRatingText(String providerId) {
+    if (providerId.isEmpty) return const Text(" New", style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold));
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('reviews').where('providerId', isEqualTo: providerId).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Text(" New", style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold));
+        }
+        
+        double total = 0;
+        for (var doc in snapshot.data!.docs) {
+          total += (doc.data() as Map<String, dynamic>)['rating'] ?? 0;
+        }
+        double avg = total / snapshot.data!.docs.length;
+        
+        return Text(" ${avg.toStringAsFixed(1)}", 
+          style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold));
+      },
     );
   }
 

@@ -1,14 +1,88 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ForgotPasswordPage extends StatelessWidget {
-  final Function(String email) onVerifyEmail;
+class ForgotPasswordPage extends StatefulWidget {
+  const ForgotPasswordPage({super.key, required Function(String email) onVerifyEmail});
 
-  const ForgotPasswordPage({super.key, required this.onVerifyEmail});
+  @override
+  State<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
+}
+
+class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
+  final _emailController = TextEditingController();
+  bool _isLoading = false;
+
+  Future<void> _handlePasswordReset() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter your email address")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Check if email exists in Firestore 'users' collection
+      final userQuery = await FirebaseFirestore.instance
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+
+      if (userQuery.docs.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No account found with this email address")),
+        );
+      } else {
+        // Email exists, send reset link
+        await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+        
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Reset Email Sent"),
+            content: Text("A password reset link has been sent to $email. Please check your inbox."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(context); // Go back to login
+                },
+                child: const Text("OK"),
+              ),
+            ],
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? "An error occurred")),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final emailController = TextEditingController();
-
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: Column(
@@ -22,12 +96,14 @@ class ForgotPasswordPage extends StatelessWidget {
                 const Text("Reset Your Password",
                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                const Text("Enter your email to verify if an account exists.",
+                const Text("Enter your email to verify if an account exists and receive a reset link.",
                     style: TextStyle(color: Colors.grey)),
                 const SizedBox(height: 32),
-                _buildTextField(emailController, "Email Address", Icons.email_outlined),
+                _buildTextField(_emailController, "Email Address", Icons.email_outlined),
                 const SizedBox(height: 24),
-                _buildSubmitButton(() => onVerifyEmail(emailController.text)),
+                _isLoading 
+                  ? const Center(child: CircularProgressIndicator()) 
+                  : _buildSubmitButton(_handlePasswordReset),
               ],
             ),
           ),
@@ -36,7 +112,6 @@ class ForgotPasswordPage extends StatelessWidget {
     );
   }
 
-  // Reuse your existing gradient header style
   Widget _buildHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.only(top: 50, bottom: 20),
@@ -55,6 +130,7 @@ class ForgotPasswordPage extends StatelessWidget {
   Widget _buildTextField(TextEditingController controller, String label, IconData icon) {
     return TextField(
       controller: controller,
+      keyboardType: TextInputType.emailAddress,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),
@@ -73,7 +149,7 @@ class ForgotPasswordPage extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
-        child: const Text("Verify Email", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        child: const Text("Send Reset Link", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }

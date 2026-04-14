@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ServiceDetail extends StatelessWidget {
   final Map<String, dynamic> service;
@@ -131,8 +132,8 @@ class ServiceDetail extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              const Icon(Icons.star, color: Color(0xFFFBBF24), size: 20),
-              Text(" ${provider['rating'] ?? '4.8'}", style: const TextStyle(fontWeight: FontWeight.bold)),
+              const Icon(Icons.star, color: Color(0xFFFBB24), size: 20),
+              _buildRatingText(provider['uid'] ?? provider['id'] ?? ''),
               const SizedBox(width: 8),
               const Icon(Icons.verified_user_outlined, color: Color(0xFF3B82F6), size: 16),
               const Text(" Verified Provider", style: TextStyle(color: Color(0xFF3B82F6), fontSize: 12)),
@@ -142,6 +143,27 @@ class ServiceDetail extends StatelessWidget {
           Text(provider['description'] ?? "No description available.", style: const TextStyle(color: Color(0xFF374151), height: 1.5)),
         ],
       ),
+    );
+  }
+
+  Widget _buildRatingText(String providerId) {
+    if (providerId.isEmpty) return const Text(" New", style: TextStyle(fontWeight: FontWeight.bold));
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('reviews').where('providerId', isEqualTo: providerId).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Text(" New", style: TextStyle(fontWeight: FontWeight.bold));
+        }
+        
+        double total = 0;
+        for (var doc in snapshot.data!.docs) {
+          total += (doc.data() as Map<String, dynamic>)['rating'] ?? 0;
+        }
+        double avg = total / snapshot.data!.docs.length;
+        
+        return Text(" ${avg.toStringAsFixed(1)} (${snapshot.data!.docs.length} reviews)", 
+          style: const TextStyle(fontWeight: FontWeight.bold));
+      },
     );
   }
 
