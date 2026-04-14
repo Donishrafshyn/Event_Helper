@@ -99,7 +99,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               _detailLabel("Location"), Text(b['eventLocation'] ?? "N/A"),
               _detailLabel("Guests"), Text(b['guestCount']?.toString() ?? "N/A"),
               _detailLabel("Status"), Text((b['status'] ?? "pending").toUpperCase(), 
-                  style: TextStyle(fontWeight: FontWeight.bold, color: b['status'] == 'completed' ? Colors.blue : (b['status'] == 'confirmed' ? Colors.green : Colors.orange))),
+                  style: TextStyle(fontWeight: FontWeight.bold, color: b['status'] == 'completed' ? Colors.blue : (b['status'] == 'confirmed' ? Colors.green : (b['status'] == 'rejected' ? Colors.red : Colors.orange)))),
               const Divider(),
               _detailLabel("User Message"),
               Text(b['message'] ?? "No message provided.", style: const TextStyle(fontStyle: FontStyle.italic)),
@@ -154,6 +154,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 _detailLabel("Business Name"), Text(provider['businessName'] ?? "N/A", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 _detailLabel("Category"), Text(provider['category'] ?? "N/A"),
                 _detailLabel("Pricing"), Text("₹ ${provider['price'] ?? 'N/A'}"),
+                _detailLabel("Contact Email"), Text(provider['email'] ?? "N/A", style: const TextStyle(color: Colors.blue)),
+                _detailLabel("Contact Phone"), Text(provider['phone'] ?? "N/A", style: const TextStyle(color: Colors.blue)),
                 _detailLabel("Description"), Text(provider['description'] ?? "N/A"),
                 const Divider(height: 30),
                 const Text("Feedback History", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
@@ -210,8 +212,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: LinearProgressIndicator());
         if (snapshot.data!.docs.isEmpty) return const Text("No reviews yet.", style: TextStyle(color: Colors.grey, fontSize: 12));
+        
+        final reviews = snapshot.data!.docs.toList()..sort((a, b) {
+          Timestamp? t1 = (a.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          Timestamp? t2 = (b.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          if (t1 == null) return -1;
+          if (t2 == null) return 1;
+          return t2.compareTo(t1);
+        });
+
         return Column(
-          children: snapshot.data!.docs.map((doc) {
+          children: reviews.map((doc) {
             var r = doc.data() as Map<String, dynamic>;
             return Container(
               margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(8),
@@ -392,17 +403,41 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   Widget _buildBookingAlerts() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('bookings').orderBy('createdAt', descending: true).snapshots(),
+      stream: FirebaseFirestore.instance.collection('bookings').snapshots(),
       builder: (context, snapshot) {
+        if (snapshot.hasError) return Text("Error: ${snapshot.error}");
         if (!snapshot.hasData) return const LinearProgressIndicator();
-        if (snapshot.data!.docs.isEmpty) return const Text("No recent bookings.", style: TextStyle(color: Colors.grey, fontSize: 12));
-        return Column(children: snapshot.data!.docs.map((doc) {
+        
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) return const Text("No recent bookings.", style: TextStyle(color: Colors.grey, fontSize: 12));
+
+        // Sort in memory to show newest requests first and ensure null timestamps (new docs) stay at top
+        final sortedDocs = docs.toList()..sort((a, b) {
+          Timestamp? t1 = (a.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          Timestamp? t2 = (b.data() as Map<String, dynamic>)['createdAt'] as Timestamp?;
+          if (t1 == null) return -1;
+          if (t2 == null) return 1;
+          return t2.compareTo(t1);
+        });
+
+        return Column(children: sortedDocs.map((doc) {
           var b = doc.data() as Map<String, dynamic>;
-          return Card(elevation: 0, color: Colors.blue[50], margin: const EdgeInsets.only(bottom: 8), 
+          String status = b['status'] ?? 'pending';
+          Color statusColor = status == 'confirmed' ? Colors.green : (status == 'rejected' || status == 'cancelled' ? Colors.red : (status == 'completed' ? Colors.blue : Colors.orange));
+          
+          return Card(
+            elevation: 0, 
+            color: status == 'pending' ? Colors.blue[50] : (status == 'cancelled' ? Colors.red[50] : Colors.grey[100]),
+            margin: const EdgeInsets.only(bottom: 8), 
             child: ListTile(
               onTap: () => _showBookingFullDetails(b),
-              title: Text("New Request for ${b['serviceName']}"), 
-              subtitle: Text("Event: ${b['eventName']}")));
+              title: Text("Request for ${b['serviceName']}"), 
+              subtitle: Text("Event: ${b['eventName']} • Status: ${status.toUpperCase()}", style: TextStyle(color: statusColor.withOpacity(0.8), fontSize: 12)),
+              trailing: status == 'pending' 
+                ? const Icon(Icons.fiber_new, color: Colors.blue) 
+                : null,
+            )
+          );
         }).toList());
       }
     );

@@ -20,6 +20,7 @@ class ServiceList extends StatefulWidget {
 
 class _ServiceListState extends State<ServiceList> {
   String _searchQuery = '';
+  String _sortBy = 'name_asc'; // name_asc, name_desc, rating, price_asc, price_desc
 
   final Map<String, String> _categoryNames = {
     'all': 'All Services',
@@ -65,6 +66,7 @@ class _ServiceListState extends State<ServiceList> {
       body: Column(
         children: [
           _buildHeader(),
+          _buildSortBar(),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -83,31 +85,138 @@ class _ServiceListState extends State<ServiceList> {
                   return _buildEmptyState();
                 }
 
-                List<Map<String, dynamic>> providers = snapshot.data!.docs.map((doc) {
-                  return {...doc.data() as Map<String, dynamic>, 'id': doc.id};
-                }).toList();
+                // Since we need to sort by rating which is in a different collection,
+                // we'll use a Future to get all ratings first if sorting by rating is selected.
+                // However, for performance and simplicity in this UI, we'll fetch providers 
+                // and then sort them.
+                
+                return FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _getProcessedProviders(snapshot.data!.docs),
+                  builder: (context, providerSnapshot) {
+                    if (!providerSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+                    
+                    List<Map<String, dynamic>> providers = providerSnapshot.data!;
 
-                if (widget.category != 'all') {
-                  providers = providers.where((p) => p['category'] == widget.category).toList();
-                }
+                    if (providers.isEmpty) return _buildEmptyState();
 
-                if (_searchQuery.isNotEmpty) {
-                  providers = providers.where((p) => 
-                    (p['businessName'] ?? '').toString().toLowerCase().contains(_searchQuery.toLowerCase())
-                  ).toList();
-                }
-
-                if (providers.isEmpty) return _buildEmptyState();
-
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: providers.length,
-                  itemBuilder: (context, index) => _buildServiceCard(providers[index]),
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: providers.length,
+                      itemBuilder: (context, index) => _buildServiceCard(providers[index]),
+                    );
+                  }
                 );
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _getProcessedProviders(List<QueryDocumentSnapshot> docs) async {
+    List<Map<String, dynamic>> providers = docs.map((doc) {
+      return {...doc.data() as Map<String, dynamic>, 'id': doc.id};
+    }).toList();
+
+    // Filter by category
+    if (widget.category != 'all') {
+      providers = providers.where((p) => p['category'] == widget.category).toList();
+    }
+
+    // Filter by search
+    if (_searchQuery.isNotEmpty) {
+      providers = providers.where((p) => 
+        (p['businessName'] ?? p['name'] ?? '').toString().toLowerCase().contains(_searchQuery.toLowerCase())
+      ).toList();
+    }
+
+    // Attach average ratings for sorting
+    for (var p in providers) {
+      String pid = p['uid'] ?? p['id'];
+      var reviewSnap = await FirebaseFirestore.instance.collection('reviews').where('providerId', isEqualTo: pid).get();
+      if (reviewSnap.docs.isEmpty) {
+        p['avgRating'] = 0.0;
+        p['reviewCount'] = 0;
+      } else {
+        double total = 0;
+        for (var d in reviewSnap.docs) {
+          total += (d.data())['rating'] ?? 0;
+        }
+        p['avgRating'] = total / reviewSnap.docs.length;
+        p['reviewCount'] = reviewSnap.docs.length;
+      }
+    }
+
+    // Sort
+    providers.sort((a, b) {
+      switch (_sortBy) {
+        case 'name_asc':
+          return (a['businessName'] ?? a['name'] ?? '').toString().compareTo((b['businessName'] ?? b['name'] ?? '').toString());
+        case 'name_desc':
+          return (b['businessName'] ?? b['name'] ?? '').toString().compareTo((a['businessName'] ?? a['name'] ?? '').toString());
+        case 'rating':
+          return (b['avgRating'] as double).compareTo(a['avgRating'] as double);
+        case 'price_asc':
+          double priceA = double.tryParse(a['price']?.toString() ?? '0') ?? 0;
+          double priceB = double.tryParse(b['price']?.toString() ?? '0') ?? 0;
+          return priceA.compareTo(priceB);
+        case 'price_desc':
+          double priceA = double.tryParse(a['price']?.toString() ?? '0') ?? 0;
+          double priceB = double.tryParse(b['price']?.toString() ?? '0') ?? 0;
+          return priceB.compareTo(priceA);
+        default:
+          return 0;
+      }
+    });
+
+    return providers;
+  }
+
+  Widget _buildSortBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Colors.white,
+      child: Row(
+        children: [
+          const Icon(Icons.sort, size: 18, color: Colors.grey),
+          const SizedBox(width: 8),
+          const Text("Sort by:", style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _sortChip("A-Z", 'name_asc'),
+                  _sortChip("Z-A", 'name_desc'),
+                  _sortChip("Rating", 'rating'),
+                  _sortChip("Price Low-High", 'price_asc'),
+                  _sortChip("Price High-Low", 'price_desc'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sortChip(String label, String value) {
+    bool isSelected = _sortBy == value;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8.0),
+      child: ChoiceChip(
+        label: Text(label, style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : Colors.black87)),
+        selected: isSelected,
+        onSelected: (bool selected) {
+          if (selected) setState(() => _sortBy = value);
+        },
+        selectedColor: const Color(0xFF9333EA),
+        backgroundColor: Colors.grey[100],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        showCheckmark: false,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
       ),
     );
   }
@@ -183,7 +292,8 @@ class _ServiceListState extends State<ServiceList> {
                   Row(
                     children: [
                       const Icon(Icons.star, color: Colors.orange, size: 14),
-                      const Text(" 4.8", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      Text(provider['reviewCount'] == 0 ? " New" : " ${provider['avgRating'].toStringAsFixed(1)} (${provider['reviewCount']})", 
+                        style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
                       const Spacer(),
                       Text(provider['price'] != null ? "₹${provider['price']}" : "Details",
                           style: const TextStyle(color: Color(0xFF9333EA), fontWeight: FontWeight.bold, fontSize: 12)),
